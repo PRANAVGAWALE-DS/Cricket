@@ -27,8 +27,9 @@ import plotly.graph_objects as go
 from src.features import (
     build_match_features_v2,
     build_win_probability_features,
+    build_score_features,
+    build_potm_features,
 )
-from src.models import build_score_features, build_potm_features
 from src.data_loader import save_processed
 
 TEMPLATE = "plotly_dark"

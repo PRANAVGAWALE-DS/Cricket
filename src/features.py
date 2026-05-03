@@ -23,18 +23,19 @@ def batting_career_stats(deliveries: pd.DataFrame) -> pd.DataFrame:
         batsman, matches, innings, runs, balls_faced, fours, sixes,
         strike_rate, average, dot_ball_pct, boundary_pct
     """
+    # super-over rows excluded for all career stats
     legal = deliveries[~deliveries["is_super_over"]].copy()
 
-    runs_per_ball = (
-        legal.groupby(["match_id", "batsman"])["batsman_runs"]
-        .sum()
-        .reset_index(name="match_runs")
+    # Legal-delivery frame — required so dot-ball numerator matches the
+    # balls_faced denominator (both must exclude wides and no-balls).
+    legal_del = legal[legal["is_legal_delivery"]].copy()
+
+    # Match count per batsman (unique match appearances, super-overs excluded)
+    match_counts = (
+        legal.groupby("batsman")["match_id"].nunique().reset_index(name="matches")
     )
 
-    # Innings count (a batsman can appear in multiple matches)
-    innings = legal.groupby("batsman")["match_id"].nunique().reset_index(name="matches")
-
-    # Aggregate
+    # Aggregate — dot_balls computed on legal_del to avoid counting wides
     agg = (
         legal.groupby("batsman")
         .agg(
@@ -43,12 +44,19 @@ def batting_career_stats(deliveries: pd.DataFrame) -> pd.DataFrame:
             fours=("batsman_runs", lambda x: (x == 4).sum()),
             sixes=("batsman_runs", lambda x: (x == 6).sum()),
             dismissals=("is_wicket", "sum"),
-            dot_balls=("batsman_runs", lambda x: (x == 0).sum()),
         )
         .reset_index()
     )
 
-    agg = agg.merge(innings, on="batsman")
+    dot_balls = (
+        legal_del.groupby("batsman")["batsman_runs"]
+        .apply(lambda x: (x == 0).sum())
+        .reset_index(name="dot_balls")
+    )
+    agg = agg.merge(dot_balls, on="batsman", how="left").fillna({"dot_balls": 0})
+    agg["dot_balls"] = agg["dot_balls"].astype(int)
+
+    agg = agg.merge(match_counts, on="batsman")
     agg["strike_rate"] = (
         agg["runs"] / agg["balls_faced"].replace(0, np.nan) * 100
     ).round(2)
@@ -108,8 +116,9 @@ def bowling_career_stats(deliveries: pd.DataFrame) -> pd.DataFrame:
         ~deliveries["is_super_over"] & deliveries["is_legal_delivery"]
     ].copy()
 
+    # Match count derived from the same filtered frame as all other stats
     matches = (
-        deliveries.groupby("bowler")["match_id"].nunique().reset_index(name="matches")
+        legal.groupby("bowler")["match_id"].nunique().reset_index(name="matches")
     )
 
     agg = (
@@ -183,22 +192,20 @@ def partnership_stats(deliveries: pd.DataFrame) -> pd.DataFrame:
 
     df = deliveries[~deliveries["is_super_over"]].copy()
 
-    # Normalize pair order so (A,B) and (B,A) are the same
-    df["pair"] = df.apply(
-        lambda r: tuple(sorted([r["batsman"], r["non_striker"]])), axis=1
-    )
+    # Normalize pair order so (A, B) and (B, A) map to the same key.
+    # np.sort on the two-column array is ~20-40× faster than row-wise apply.
+    sorted_pairs = np.sort(df[["batsman", "non_striker"]].values, axis=1)
+    df["player1"] = sorted_pairs[:, 0]
+    df["player2"] = sorted_pairs[:, 1]
 
     agg = (
-        df.groupby(["match_id", "inning", "pair"])
+        df.groupby(["match_id", "inning", "player1", "player2"])
         .agg(
             runs=("batsman_runs", "sum"),
             balls=("is_legal_delivery", "sum"),
         )
         .reset_index()
     )
-
-    agg[["player1", "player2"]] = pd.DataFrame(agg["pair"].tolist(), index=agg.index)
-    agg.drop(columns=["pair"], inplace=True)
 
     summary = (
         agg.groupby(["player1", "player2"])
@@ -452,3 +459,213 @@ def build_match_features_v2(matches: pd.DataFrame) -> pd.DataFrame:
         "win_rate_diff",
     ]
     return df[features + ["team1_won"]].dropna()
+
+
+# ---------------------------------------------------------------------------
+# Score prediction features  (moved from models.py — feature builders
+# belong in features.py, not in the model-training module)
+# ---------------------------------------------------------------------------
+
+
+def build_score_features(
+    deliveries: pd.DataFrame, matches: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Builds over-10 (halfway point) snapshot features to predict final 1st innings score.
+
+    Prediction point: end of over 10 — teams make this calculation at the drinks break.
+    Shifting from over-6 to over-10 gives the model 2/3 of the innings as context,
+    substantially reducing irreducible uncertainty.
+
+    Features:
+        runs_10, wickets_10, current_rr, projected_score,
+        scoring_pressure, boundaries_10,
+        batting_team_enc, venue_enc, season
+    Target: final_score
+
+    NOTE: assumes 1-indexed overs (1–20) as validated by load_deliveries.
+    """
+    is_first = (deliveries["inning"] == 1) & (~deliveries["is_super_over"].astype(bool))
+
+    half = (
+        deliveries[is_first & (deliveries["over"] <= 10)]
+        .groupby("match_id")
+        .agg(
+            runs_10=("total_runs", "sum"),
+            wickets_10=("is_wicket", "sum"),
+            boundaries_10=("batsman_runs", lambda x: ((x == 4) | (x == 6)).sum()),
+            batting_team=("batting_team", "first"),
+        )
+        .reset_index()
+    )
+    half["current_rr"] = (half["runs_10"] / 10).round(3)
+    half["projected_score"] = (half["current_rr"] * 20).round(1)
+
+    full = (
+        deliveries[is_first]
+        .groupby("match_id")["total_runs"]
+        .sum()
+        .reset_index(name="final_score")
+    )
+
+    df = (
+        half.merge(full, on="match_id")
+        .merge(
+            matches[["id", "venue", "season", "date"]].rename(
+                columns={"id": "match_id"}
+            ),
+            on="match_id",
+            how="left",
+        )
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
+
+    # Rolling venue avg run rate — no leakage, uses only prior matches
+    venue_rr: dict = {}
+    venue_rr_col = []
+    for _, row in df.iterrows():
+        v = row["venue"]
+        prior = venue_rr.get(v, [])
+        avg = round(sum(prior) / len(prior), 3) if prior else np.nan
+        venue_rr_col.append(avg)
+        prior.append(row["current_rr"])
+        venue_rr[v] = prior
+
+    global_rr = df["current_rr"].mean()
+    df["venue_avg_rr"] = pd.Series(venue_rr_col).fillna(global_rr).values
+    df["scoring_pressure"] = (df["current_rr"] - df["venue_avg_rr"]).round(3)
+
+    df["batting_team_enc"] = df["batting_team"].astype("category").cat.codes
+    df["venue_enc"] = df["venue"].astype("category").cat.codes
+
+    features = [
+        "runs_10",
+        "wickets_10",
+        "current_rr",
+        "projected_score",
+        "scoring_pressure",
+        "boundaries_10",
+        "batting_team_enc",
+        "venue_enc",
+        "season",
+        "final_score",
+    ]
+    return df[features].dropna()
+
+
+# ---------------------------------------------------------------------------
+# POTM prediction features  (moved from models.py)
+# ---------------------------------------------------------------------------
+
+
+def build_potm_features(
+    deliveries: pd.DataFrame, matches: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Build player-level per-match features for POTM classification.
+
+    For each (match_id, player) pair:
+      - runs_scored, balls_faced, strike_rate
+      - wickets_taken, runs_given, economy
+      - player_won (1 if player's team won)
+
+    Fix (C4): pure bowlers who never batted previously got player_won = 0
+    regardless of match outcome because team lookup was batting-only.
+    Now we build a unified player→team map from both batting and bowling
+    sides (batting entry takes priority where both exist).
+
+    Target: is_potm
+    """
+    batting = (
+        deliveries[~deliveries["is_super_over"]]
+        .groupby(["match_id", "batsman"])
+        .agg(
+            runs_scored=("batsman_runs", "sum"),
+            balls_faced=("is_legal_delivery", "sum"),
+        )
+        .reset_index()
+        .rename(columns={"batsman": "player"})
+    )
+
+    bowling = (
+        deliveries[~deliveries["is_super_over"] & deliveries["is_legal_delivery"]]
+        .groupby(["match_id", "bowler"])
+        .agg(
+            wickets_taken=("is_wicket", "sum"),
+            runs_given=("total_runs", "sum"),
+            balls_bowled=("is_legal_delivery", "sum"),
+        )
+        .reset_index()
+        .rename(columns={"bowler": "player"})
+    )
+
+    # Full player list per match
+    all_players = pd.concat(
+        [
+            batting[["match_id", "player"]],
+            bowling[["match_id", "player"]],
+        ]
+    ).drop_duplicates()
+
+    df = all_players.merge(batting, on=["match_id", "player"], how="left")
+    df = df.merge(bowling, on=["match_id", "player"], how="left")
+    df = df.fillna(0)
+
+    df["strike_rate"] = (
+        df["runs_scored"] / df["balls_faced"].replace(0, np.nan) * 100
+    ).fillna(0)
+    df["economy"] = (
+        df["runs_given"] / (df["balls_bowled"] / 6).replace(0, np.nan)
+    ).fillna(0)
+
+    # POTM ground truth
+    potm = matches[["id", "player_of_match", "winner"]].rename(
+        columns={"id": "match_id", "player_of_match": "potm"}
+    )
+    df = df.merge(potm, on="match_id", how="left")
+    df["is_potm"] = (df["player"] == df["potm"]).astype(int)
+
+    # -----------------------------------------------------------------------
+    # C4 fix: build a unified player→team lookup from BOTH batting and bowling
+    # sides so that pure bowlers on the winning team are not always penalised
+    # with player_won = 0.
+    # bowling_team column in deliveries = the team currently bowling
+    # = the bowler's own team.
+    # batting_team column = the batsmen's team.
+    # We union both, letting batting entries win on conflict (keep="last"
+    # after concat places batting rows second so they overwrite).
+    # -----------------------------------------------------------------------
+    bowl_team = (
+        deliveries[~deliveries["is_super_over"]]
+        .groupby(["match_id", "bowler"])["bowling_team"]
+        .first()
+        .reset_index()
+        .rename(columns={"bowler": "player", "bowling_team": "team"})
+    )
+    bat_team = (
+        deliveries[~deliveries["is_super_over"]]
+        .groupby(["match_id", "batsman"])["batting_team"]
+        .first()
+        .reset_index()
+        .rename(columns={"batsman": "player", "batting_team": "team"})
+    )
+    # concat: bowl first, bat second → keep="last" retains bat entry on ties
+    player_team = (
+        pd.concat([bowl_team, bat_team])
+        .drop_duplicates(subset=["match_id", "player"], keep="last")
+    )
+
+    df = df.merge(player_team, on=["match_id", "player"], how="left")
+    df["player_won"] = (df["team"] == df["winner"]).astype(int)
+
+    features = [
+        "runs_scored",
+        "balls_faced",
+        "strike_rate",
+        "wickets_taken",
+        "runs_given",
+        "economy",
+        "player_won",
+    ]
+    return df[features + ["is_potm"]].dropna()

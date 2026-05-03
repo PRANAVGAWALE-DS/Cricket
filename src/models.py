@@ -21,17 +21,18 @@ from typing import Any, Dict, Tuple
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
+    average_precision_score,
+    f1_score,
     log_loss,
     mean_absolute_error,
+    precision_score,
     r2_score,
+    recall_score,
     roc_auc_score,
 )
 from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
-from sklearn.preprocessing import StandardScaler
 import lightgbm as lgb
 import xgboost as xgb
 
@@ -78,7 +79,6 @@ def train_match_winner(
         learning_rate=0.05,
         subsample=0.8,
         colsample_bytree=0.8,
-        use_label_encoder=False,
         eval_metric="logloss",
         random_state=42,
     )
@@ -118,91 +118,9 @@ def train_match_winner(
 # ---------------------------------------------------------------------------
 # 2. First Innings Score Regressor
 # ---------------------------------------------------------------------------
-
-
-def build_score_features(
-    deliveries: pd.DataFrame, matches: pd.DataFrame
-) -> pd.DataFrame:
-    """
-    Builds over-10 (halfway point) snapshot features to predict final 1st innings score.
-
-    Prediction point: end of over 10 — teams make this calculation at the drinks break.
-    Shifting from over-6 to over-10 gives the model 2/3 of the innings as context,
-    substantially reducing irreducible uncertainty.
-
-    Features:
-        runs_10, wickets_10, current_rr, projected_score,
-        scoring_pressure, boundaries_10,
-        batting_team_enc, venue_enc, season
-    Target: final_score
-    """
-    is_first = (deliveries["inning"] == 1) & (~deliveries["is_super_over"].astype(bool))
-
-    half = (
-        deliveries[is_first & (deliveries["over"] <= 10)]
-        .groupby("match_id")
-        .agg(
-            runs_10=("total_runs", "sum"),
-            wickets_10=("is_wicket", "sum"),
-            boundaries_10=("batsman_runs", lambda x: ((x == 4) | (x == 6)).sum()),
-            batting_team=("batting_team", "first"),
-        )
-        .reset_index()
-    )
-    half["current_rr"] = (half["runs_10"] / 10).round(3)
-    half["projected_score"] = (half["current_rr"] * 20).round(1)
-
-    full = (
-        deliveries[is_first]
-        .groupby("match_id")["total_runs"]
-        .sum()
-        .reset_index(name="final_score")
-    )
-
-    df = (
-        half.merge(full, on="match_id")
-        .merge(
-            matches[["id", "venue", "season", "date"]].rename(
-                columns={"id": "match_id"}
-            ),
-            on="match_id",
-            how="left",
-        )
-        .sort_values("date")
-        .reset_index(drop=True)
-    )
-
-    # Rolling venue avg run rate — no leakage, uses only prior matches
-    venue_rr: dict = {}
-    venue_rr_col = []
-    for _, row in df.iterrows():
-        v = row["venue"]
-        prior = venue_rr.get(v, [])
-        avg = round(sum(prior) / len(prior), 3) if prior else np.nan
-        venue_rr_col.append(avg)
-        prior.append(row["current_rr"])
-        venue_rr[v] = prior
-
-    global_rr = df["current_rr"].mean()
-    df["venue_avg_rr"] = pd.Series(venue_rr_col).fillna(global_rr).values
-    df["scoring_pressure"] = (df["current_rr"] - df["venue_avg_rr"]).round(3)
-
-    df["batting_team_enc"] = df["batting_team"].astype("category").cat.codes
-    df["venue_enc"] = df["venue"].astype("category").cat.codes
-
-    features = [
-        "runs_10",
-        "wickets_10",
-        "current_rr",
-        "projected_score",
-        "scoring_pressure",
-        "boundaries_10",
-        "batting_team_enc",
-        "venue_enc",
-        "season",
-        "final_score",
-    ]
-    return df[features].dropna()
+# NOTE: build_score_features() has been moved to features.py where all
+# feature-engineering functions live.  Import it from there:
+#   from src.features import build_score_features
 
 
 def train_score_predictor(
@@ -282,9 +200,11 @@ def train_win_probability(
     X = feature_df.drop(columns=drop_cols)
     y = feature_df[target_col]
 
-    # Temporal split: last 20% of match_ids as test (simulate real-world hold-out)
+    # Temporal split: last 20% of match_ids as test (simulate real-world hold-out).
+    # np.sort ensures the split is chronological by match ID — pd.unique() returns
+    # values in order of first appearance, which is NOT guaranteed to be sorted.
     if "match_id" in feature_df.columns:
-        match_ids = feature_df["match_id"].unique()
+        match_ids = np.sort(feature_df["match_id"].unique())
         n_test = int(len(match_ids) * 0.2)
         test_ids = set(match_ids[-n_test:])
         mask = feature_df["match_id"].isin(test_ids)
@@ -374,90 +294,9 @@ def predict_win_curve(
 # ---------------------------------------------------------------------------
 # 4. Player of the Match Classifier
 # ---------------------------------------------------------------------------
-
-
-def build_potm_features(
-    deliveries: pd.DataFrame, matches: pd.DataFrame
-) -> pd.DataFrame:
-    """
-    Build player-level per-match features for POTM classification.
-
-    For each (match_id, player) pair:
-      - runs_scored, balls_faced, strike_rate
-      - wickets_taken, runs_given, economy
-      - player_won_team (1 if player's team won)
-    Target: is_potm
-    """
-    batting = (
-        deliveries[~deliveries["is_super_over"]]
-        .groupby(["match_id", "batsman"])
-        .agg(
-            runs_scored=("batsman_runs", "sum"),
-            balls_faced=("is_legal_delivery", "sum"),
-        )
-        .reset_index()
-        .rename(columns={"batsman": "player"})
-    )
-
-    bowling = (
-        deliveries[~deliveries["is_super_over"] & deliveries["is_legal_delivery"]]
-        .groupby(["match_id", "bowler"])
-        .agg(
-            wickets_taken=("is_wicket", "sum"),
-            runs_given=("total_runs", "sum"),
-            balls_bowled=("is_legal_delivery", "sum"),
-        )
-        .reset_index()
-        .rename(columns={"bowler": "player"})
-    )
-
-    # Full player list per match
-    all_players = pd.concat(
-        [
-            batting[["match_id", "player"]],
-            bowling[["match_id", "player"]],
-        ]
-    ).drop_duplicates()
-
-    df = all_players.merge(batting, on=["match_id", "player"], how="left")
-    df = df.merge(bowling, on=["match_id", "player"], how="left")
-    df = df.fillna(0)
-
-    df["strike_rate"] = (
-        df["runs_scored"] / df["balls_faced"].replace(0, np.nan) * 100
-    ).fillna(0)
-    df["economy"] = (
-        df["runs_given"] / (df["balls_bowled"] / 6).replace(0, np.nan)
-    ).fillna(0)
-
-    # POTM ground truth
-    potm = matches[["id", "player_of_match", "winner"]].rename(
-        columns={"id": "match_id", "player_of_match": "potm"}
-    )
-    df = df.merge(potm, on="match_id", how="left")
-    df["is_potm"] = (df["player"] == df["potm"]).astype(int)
-
-    # Was player on the winning team?
-    bat_team = (
-        deliveries[~deliveries["is_super_over"]]
-        .groupby(["match_id", "batsman"])["batting_team"]
-        .first()
-        .reset_index()
-        .rename(columns={"batsman": "player"})
-    )
-    df = df.merge(bat_team, on=["match_id", "player"], how="left")
-    df["player_won"] = (df["batting_team"] == df["winner"]).astype(int)
-
-    features = [
-        "runs_scored",
-        "balls_faced",
-        "strike_rate",
-        "wickets_taken",
-        "runs_given",
-        "economy",
-        "player_won",
-    ]
-    return df[features + ["is_potm"]].dropna()
+# NOTE: build_potm_features() has been moved to features.py.
+# Import it from there:
+#   from src.features import build_potm_features
 
 
 def train_potm_classifier(
@@ -484,7 +323,6 @@ def train_potm_classifier(
         max_depth=4,
         learning_rate=0.05,
         scale_pos_weight=spw,
-        use_label_encoder=False,
         eval_metric="aucpr",
         random_state=42,
     )
@@ -492,13 +330,6 @@ def train_potm_classifier(
 
     proba = model.predict_proba(X_test)[:, 1]
     preds = model.predict(X_test)
-
-    from sklearn.metrics import (
-        precision_score,
-        recall_score,
-        f1_score,
-        average_precision_score,
-    )
 
     metrics = {
         "accuracy": round(accuracy_score(y_test, preds), 4),

@@ -135,9 +135,12 @@ def load_matches(path: str | Path | None = None) -> pd.DataFrame:
     team_cols = ["team1", "team2", "toss_winner", "winner"]
     df = _abbreviate_teams(df, team_cols)
 
-    # city: fill NaN from venue (first word is usually city name)
+    # city: fill NaN from venue.  Venue strings are typically
+    # "Stadium Name, City" so we take the *last* comma-separated token.
+    # For single-token venues (no comma) str[-1] returns the whole string,
+    # which is no worse than the previous behaviour.
     if "city" in df.columns:
-        df["city"] = df["city"].fillna(df["venue"].str.split(",").str[0].str.strip())
+        df["city"] = df["city"].fillna(df["venue"].str.split(",").str[-1].str.strip())
 
     # Derived column: did the toss winner also win the match?
     df["toss_match_winner"] = df["toss_winner"] == df["winner"]
@@ -176,6 +179,30 @@ def load_deliveries(path: str | Path | None = None) -> pd.DataFrame:
 
     # is_super_over: coerce to bool
     df["is_super_over"] = df["is_super_over"].astype(bool)
+
+    # Validate over indexing ------------------------------------------------
+    # All downstream feature engineering assumes 1-indexed overs (1–20).
+    # The Kaggle nowke9/ipldata dataset uses 1-indexed overs; log a clear
+    # warning immediately if the loaded file differs so the issue surfaces at
+    # load time rather than silently corrupting phase bins and RR calculations.
+    over_min = int(df["over"].min())
+    over_max = int(df["over"].max())
+    if over_min == 0:
+        logger.warning(
+            "deliveries 'over' column appears to be 0-indexed "
+            "(min=%d, max=%d). features.py assumes 1-indexed overs (1-20). "
+            "Phase bins, balls_completed, and score-prediction filters will "
+            "be incorrect. Adjust bins and formulas before proceeding.",
+            over_min,
+            over_max,
+        )
+    elif over_min != 1:
+        logger.warning(
+            "Unexpected over minimum: %d (expected 1 for 1-indexed overs). "
+            "Verify that feature engineering assumptions still hold.",
+            over_min,
+        )
+    # -----------------------------------------------------------------------
 
     # Abbreviate team names
     team_cols = ["batting_team", "bowling_team"]
