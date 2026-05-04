@@ -15,6 +15,7 @@
 
 # %%
 import sys
+import webbrowser
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -23,6 +24,25 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.io as pio
+
+# Write each chart to a self-contained HTML file and open via file://
+# Avoids Plotly's temporary local HTTP server (ERR_CONNECTION_REFUSED).
+pio.renderers.default = "browser"
+
+_CHART_DIR = Path(__file__).resolve().parent / ".charts"
+_CHART_DIR.mkdir(exist_ok=True)
+_chart_counter = 0
+
+
+def show(fig: go.Figure) -> None:
+    """Write figure to HTML and open via file:// — no local server required."""
+    global _chart_counter
+    _chart_counter += 1
+    out = _CHART_DIR / f"features_chart_{_chart_counter:02d}.html"
+    fig.write_html(str(out), include_plotlyjs="cdn")
+    webbrowser.open(out.as_uri())
+
 
 from src.features import (
     build_match_features_v2,
@@ -94,7 +114,7 @@ fig = px.line(
     template=TEMPLATE,
 )
 fig.add_hline(y=0.5, line_dash="dash", line_color="grey", opacity=0.5)
-fig.show()
+show(fig)
 
 # %%
 save_processed(win_prob_feats, "win_prob_features")
@@ -125,7 +145,7 @@ fig.add_vline(
     line_color="orange",
     annotation_text=f"Median: {score_feats['final_score'].median():.0f}",
 )
-fig.show()
+show(fig)
 
 # %%
 # Over-10 runs vs final score — colored by wickets at halfway
@@ -150,7 +170,7 @@ fig.add_trace(
         line=dict(color="orange", dash="dash"),
     )
 )
-fig.show()
+show(fig)
 
 # %%
 # Scoring pressure vs final score — does batting above venue par translate to big totals?
@@ -174,7 +194,7 @@ fig.add_vline(
     opacity=0.5,
     annotation_text="Venue avg RR",
 )
-fig.show()
+show(fig)
 
 # %%
 save_processed(score_feats, "score_features")
@@ -200,7 +220,7 @@ fig = px.box(
     color="is_potm",
     template=TEMPLATE,
 )
-fig.show()
+show(fig)
 
 # %%
 fig = px.box(
@@ -212,7 +232,7 @@ fig = px.box(
     color="is_potm",
     template=TEMPLATE,
 )
-fig.show()
+show(fig)
 
 # %%
 save_processed(potm_feats, "potm_features")

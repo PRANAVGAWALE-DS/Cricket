@@ -22,6 +22,9 @@ sys.path.insert(
     0, str(Path(__file__).resolve().parents[1])
 )  # allow `from src import ...`
 
+import webbrowser
+from pathlib import Path as _Path
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -29,9 +32,31 @@ import plotly.graph_objects as go
 import plotly.io as pio
 from plotly.subplots import make_subplots
 
-# Use browser renderer: avoids bundling 3MB plotly.js per chart (causes MemoryError in scripts)
-# Each fig.show() opens a browser tab. In VS Code interactive mode this is set automatically.
+# Write each chart to a self-contained HTML file and open via file://
+# This avoids Plotly's temporary local HTTP server entirely, which was
+# causing ERR_CONNECTION_REFUSED on ~4 of 18 charts when servers raced.
 pio.renderers.default = "browser"
+
+_CHART_DIR = _Path(__file__).resolve().parent / ".charts"
+_CHART_DIR.mkdir(exist_ok=True)
+_chart_counter = 0
+
+
+def show(fig: go.Figure) -> None:
+    """
+    Write the figure to a self-contained HTML file and open it via file://.
+
+    fig.write_html() embeds Plotly.js from CDN and requires no local server,
+    so all 18 charts open immediately with no ERR_CONNECTION_REFUSED errors.
+    Files are written to notebooks/.charts/chart_01.html ... chart_18.html
+    and overwritten on each run.
+    """
+    global _chart_counter
+    _chart_counter += 1
+    out = _CHART_DIR / f"eda_chart_{_chart_counter:02d}.html"
+    fig.write_html(str(out), include_plotlyjs="cdn")
+    webbrowser.open(out.as_uri())
+
 
 from src.data_loader import load_both, save_processed
 from src.features import (
@@ -85,7 +110,7 @@ fig = px.bar(
     template=TEMPLATE,
 )
 fig.update_layout(coloraxis_showscale=False)
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ### 2b. Toss decision by season
@@ -106,7 +131,7 @@ fig = px.bar(
     color_discrete_map={"bat": "#00CC96", "field": "#EF553B"},
     template=TEMPLATE,
 )
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ### 2c. Does winning the toss help?
@@ -125,7 +150,7 @@ fig = go.Figure(
     )
 )
 fig.update_layout(title="Toss Winner = Match Winner?", template=TEMPLATE)
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ### 2d. Venues — most matches hosted
@@ -146,7 +171,7 @@ fig = px.bar(
     template=TEMPLATE,
 )
 fig.update_layout(yaxis={"categoryorder": "total ascending"}, coloraxis_showscale=False)
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ### 2e. Win margins — biggest victories
@@ -182,7 +207,7 @@ fig = px.bar(
     template=TEMPLATE,
 )
 fig.update_layout(yaxis={"categoryorder": "total ascending"}, coloraxis_showscale=False)
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ### 2g. Team win counts
@@ -201,7 +226,7 @@ fig = px.bar(
     template=TEMPLATE,
 )
 fig.update_layout(coloraxis_showscale=False)
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ## 3. Deliveries-Based Batting Analytics
@@ -240,7 +265,7 @@ fig.add_vline(
     opacity=0.4,
     annotation_text="Median Avg",
 )
-fig.show()
+show(fig)
 
 # %%
 fig = px.bar(
@@ -255,7 +280,7 @@ fig = px.bar(
     template=TEMPLATE,
 )
 fig.update_layout(coloraxis_colorbar_title="SR")
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ### 3b. Phase-wise strike rate (Powerplay / Middle / Death)
@@ -283,7 +308,7 @@ fig = px.bar(
     template=TEMPLATE,
 )
 fig.update_xaxes(tickangle=45)
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ### 3c. Dot ball pressure index
@@ -303,7 +328,7 @@ fig = px.bar(
     template=TEMPLATE,
 )
 fig.update_layout(coloraxis_showscale=False)
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ## 4. Deliveries-Based Bowling Analytics
@@ -340,7 +365,7 @@ fig.add_vline(
     line_color="white",
     opacity=0.4,
 )
-fig.show()
+show(fig)
 
 # %%
 fig = px.bar(
@@ -355,7 +380,7 @@ fig = px.bar(
     template=TEMPLATE,
 )
 fig.update_layout(coloraxis_colorbar_title="Economy")
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ### 4b. Phase-wise bowling economy
@@ -382,7 +407,7 @@ fig = px.bar(
     template=TEMPLATE,
 )
 fig.update_xaxes(tickangle=45)
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ## 5. Venue Analytics
@@ -405,7 +430,7 @@ fig = px.bar(
     template=TEMPLATE,
 )
 fig.update_layout(yaxis={"categoryorder": "total ascending"}, coloraxis_showscale=False)
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ## 6. Head-to-Head Matrix
@@ -426,7 +451,7 @@ fig.update_layout(
     yaxis_title="Winner",
     coloraxis_showscale=False,
 )
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ## 7. Super Over Analysis
@@ -458,7 +483,7 @@ if so_matches > 0:
         color_discrete_map={True: "#00CC96", False: "#EF553B"},
         template=TEMPLATE,
     )
-    fig.show()
+    show(fig)
 else:
     print("No super over data in this dataset.")
 
@@ -520,4 +545,4 @@ fig.update_layout(
     template=TEMPLATE,
     showlegend=False,
 )
-fig.show()
+show(fig)

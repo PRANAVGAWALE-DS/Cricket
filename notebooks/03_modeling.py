@@ -15,15 +15,38 @@
 
 # %%
 import sys
+import os
+import webbrowser
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+os.environ.setdefault("LOKY_MAX_CPU_COUNT", str(os.cpu_count() or 1))
 
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.io as pio
 from plotly.subplots import make_subplots
+
+# Write each chart to a self-contained HTML file and open via file://
+# Avoids Plotly's temporary local HTTP server (ERR_CONNECTION_REFUSED).
+pio.renderers.default = "browser"
+
+_CHART_DIR = Path(__file__).resolve().parent / ".charts"
+_CHART_DIR.mkdir(exist_ok=True)
+_chart_counter = 0
+
+
+def show(fig: go.Figure) -> None:
+    """Write figure to HTML and open via file:// — no local server required."""
+    global _chart_counter
+    _chart_counter += 1
+    out = _CHART_DIR / f"modeling_chart_{_chart_counter:02d}.html"
+    fig.write_html(str(out), include_plotlyjs="cdn")
+    webbrowser.open(out.as_uri())
+
 
 from src.models import (
     train_match_winner,
@@ -71,7 +94,7 @@ fig = px.bar(
     template=TEMPLATE,
 )
 fig.update_layout(coloraxis_showscale=False)
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ## 2. First Innings Score Regressor
@@ -111,7 +134,7 @@ fig.add_shape(
     y1=y_test_s.max(),
     line=dict(color="orange", dash="dash"),
 )
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ## 3. Live Win Probability Model
@@ -148,7 +171,7 @@ fig = px.bar(
     template=TEMPLATE,
 )
 fig.update_layout(coloraxis_showscale=False)
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ### 3a. Win Probability Curve — Single Match Demo
@@ -201,7 +224,7 @@ try:
         yaxis=dict(range=[0, 100]),
         template=TEMPLATE,
     )
-    fig.show()
+    show(fig)
 
 except Exception as e:
     print(f"Could not generate curve: {e}")
@@ -237,7 +260,7 @@ fig = px.line(
 )
 fig.add_hline(y=50, line_dash="dash", line_color="grey", opacity=0.5)
 fig.update_layout(yaxis=dict(range=[0, 100]))
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ## 4. Player of the Match Classifier
@@ -272,7 +295,7 @@ fig = px.bar(
     template=TEMPLATE,
 )
 fig.update_layout(coloraxis_showscale=False)
-fig.show()
+show(fig)
 
 # %% [markdown]
 # ## 5. Model Summary Dashboard
