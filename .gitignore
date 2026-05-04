@@ -10,4 +10,4 @@ __pycache__/
 *.pkl
 *.pyc
 venv_Cricket/
-.env
+.envnotebooks/.charts/
