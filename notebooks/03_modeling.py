@@ -23,12 +23,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 os.environ.setdefault("LOKY_MAX_CPU_COUNT", str(os.cpu_count() or 1))
 
-import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio
-from plotly.subplots import make_subplots
 
 # Write each chart to a self-contained HTML file and open via file://
 # Avoids Plotly's temporary local HTTP server (ERR_CONNECTION_REFUSED).
@@ -55,7 +53,6 @@ from src.models import (
     train_potm_classifier,
     predict_win_curve,
 )
-from src.features import build_score_features, build_potm_features
 
 TEMPLATE = "plotly_dark"
 PROCESSED_DIR = Path(__file__).resolve().parents[1] / "data" / "processed"
@@ -378,5 +375,5 @@ example_state = pd.DataFrame(
 )
 
 prob = model_loaded.predict_proba(example_state)[0][1]
-print(f"\nExample state: Over 15, 110/3, need 60 off 30 balls")
+print("\nExample state: Over 15, 110/3, need 60 off 30 balls")
 print(f"→ Predicted batting team win probability: {prob*100:.1f}%")

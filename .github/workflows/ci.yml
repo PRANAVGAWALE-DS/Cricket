@@ -1,0 +1,114 @@
+name: Cricket ML — CI
+
+on:
+  push:
+    branches: ["main", "dev"]
+  pull_request:
+    branches: ["main"]
+
+# Cancel in-progress runs on the same branch when a new push arrives
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1 — Lint
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install ruff
+        run: pip install ruff==0.4.4
+
+      - name: Run ruff
+        run: ruff check src/ api/ notebooks/ streamlit_app.py --output-format=github
+
+  # ---------------------------------------------------------------------------
+  # Job 2 — Unit + integration tests + model validation gate
+  # ---------------------------------------------------------------------------
+  test:
+    name: Tests + model gate
+    runs-on: ubuntu-latest
+    needs: lint           # only run tests if lint passes
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements_tier3.txt
+          pip install pytest pytest-cov httpx
+
+      # ── Synthetic data + model artefacts ─────────────────────────────────
+      # Real CSVs and .pkl/.ubj/.pt files are gitignored (too large).
+      # The CI fixture script (tests/conftest.py) generates minimal synthetic
+      # data and trains lightweight models for gate testing.
+      - name: Generate synthetic data + train smoke models
+        run: python tests/fixtures/build_smoke_artefacts.py
+
+      # ── Tests ─────────────────────────────────────────────────────────────
+      - name: Run tests
+        run: |
+          pytest tests/ -v --tb=short \
+            --cov=src --cov=api \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+
+  # ---------------------------------------------------------------------------
+  # Job 3 — Docker build smoke test
+  # ---------------------------------------------------------------------------
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    needs: lint           # lint must pass; independent of test job
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image
+        run: |
+          docker build \
+            -f docker/Dockerfile.api \
+            -t cricket-api:ci \
+            .
+
+      - name: Build Streamlit image
+        run: |
+          docker build \
+            -f docker/Dockerfile.streamlit \
+            -t cricket-streamlit:ci \
+            .
+
+      - name: Smoke-test API container starts
+        run: |
+          # Start the container — it will fail at startup because parquets
+          # and models are not present in CI, but the image itself must build
+          # and the Python import chain must be valid.
+          docker run --rm \
+            -e PYTHONPATH=/app \
+            cricket-api:ci \
+            python -c "from api.main import app; print('import OK')"

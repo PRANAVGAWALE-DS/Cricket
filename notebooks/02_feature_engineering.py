@@ -126,7 +126,7 @@ print("Saved win_prob_features.parquet")
 # %%
 score_feats = build_score_features(deliveries, matches)
 print(f"Score features shape: {score_feats.shape}")
-print(f"\nFirst innings score distribution:")
+print("\nFirst innings score distribution:")
 print(score_feats["final_score"].describe().round(2))
 
 # %%
@@ -206,7 +206,7 @@ print("Saved score_features.parquet")
 # %%
 potm_feats = build_potm_features(deliveries, matches)
 print(f"POTM features shape: {potm_feats.shape}")
-print(f"\nClass balance (1 = Player of the Match):")
+print("\nClass balance (1 = Player of the Match):")
 print(potm_feats["is_potm"].value_counts(normalize=True).round(4))
 
 # %%

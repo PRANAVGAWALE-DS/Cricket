@@ -25,7 +25,6 @@ sys.path.insert(
 import webbrowser
 from pathlib import Path as _Path
 
-import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go

@@ -110,7 +110,12 @@ def train_match_winner(
     )
 
     if save:
-        joblib.dump(model, MODELS_DIR / "match_winner.pkl")
+        # Save using XGBoost's native binary JSON format (.ubj).
+        # joblib pickle is XGBoost-version-sensitive and triggers a
+        # UserWarning on every load when the XGBoost version changes.
+        # .ubj is the stable, version-portable serialization format.
+        model.save_model(str(MODELS_DIR / "match_winner.ubj"))
+        logger.info("Saved match_winner.ubj (XGBoost native format)")
 
     return model, metrics
 
@@ -345,7 +350,8 @@ def train_potm_classifier(
     logger.info("POTM classifier — AUC: %.4f", metrics["roc_auc"])
 
     if save:
-        joblib.dump(model, MODELS_DIR / "potm_classifier.pkl")
+        model.save_model(str(MODELS_DIR / "potm_classifier.ubj"))
+        logger.info("Saved potm_classifier.ubj (XGBoost native format)")
 
     return model, metrics
 
@@ -356,8 +362,29 @@ def train_potm_classifier(
 
 
 def load_model(name: str) -> Any:
-    """Load a saved model by name (without .pkl extension)."""
-    path = MODELS_DIR / f"{name}.pkl"
-    if not path.exists():
-        raise FileNotFoundError(f"No saved model at {path}. Train it first.")
-    return joblib.load(path)
+    """
+    Load a saved model by name (without extension).
+
+    Resolution order:
+      1. <name>.ubj  — XGBoost native binary JSON (match_winner, potm_classifier)
+      2. <name>.pkl  — joblib pickle (score_predictor, win_probability)
+
+    XGBoost models are saved as .ubj to avoid the version-mismatch UserWarning
+    that occurs when loading joblib-pickled XGBoost models across versions.
+    """
+    ubj_path = MODELS_DIR / f"{name}.ubj"
+    pkl_path = MODELS_DIR / f"{name}.pkl"
+
+    if ubj_path.exists():
+        import xgboost as xgb
+
+        model = xgb.XGBClassifier()
+        model.load_model(str(ubj_path))
+        return model
+
+    if pkl_path.exists():
+        return joblib.load(pkl_path)
+
+    raise FileNotFoundError(
+        f"No saved model at {ubj_path} or {pkl_path}. Train it first."
+    )

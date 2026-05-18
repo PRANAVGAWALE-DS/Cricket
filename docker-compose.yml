@@ -1,0 +1,52 @@
+version: "3.9"
+
+# ---------------------------------------------------------------------------
+# Cricket ML — Tier 3 services
+#
+# Usage:
+#   docker compose up --build
+#
+# Services:
+#   api       → FastAPI + uvicorn on :8000
+#   dashboard → Streamlit on :8501
+#
+# Both services mount the project root so they read from the same
+# data/processed/ and models/ directories on the host.
+# ---------------------------------------------------------------------------
+
+services:
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: cricket_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONPATH=/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.streamlit
+    container_name: cricket_dashboard
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+    environment:
+      - API_BASE_URL=http://api:8000   # resolves via Docker internal DNS
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
