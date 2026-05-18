@@ -26,13 +26,13 @@ import sys
 import time
 from pathlib import Path
 
+import pandas as pd
+import sklearn
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-import sklearn
-import pandas as pd
-
-from src.models import train_win_probability
+from src.models import train_win_probability  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,

@@ -18,13 +18,21 @@ import sys
 import webbrowser
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from src.features import (  # noqa: E402
+    build_match_features_v2,
+    build_win_probability_features,
+    build_score_features,
+    build_potm_features,
+)
+from src.data_loader import save_processed  # noqa: E402
 
 # Write each chart to a self-contained HTML file and open via file://
 # Avoids Plotly's temporary local HTTP server (ERR_CONNECTION_REFUSED).
@@ -42,15 +50,6 @@ def show(fig: go.Figure) -> None:
     out = _CHART_DIR / f"features_chart_{_chart_counter:02d}.html"
     fig.write_html(str(out), include_plotlyjs="cdn")
     webbrowser.open(out.as_uri())
-
-
-from src.features import (
-    build_match_features_v2,
-    build_win_probability_features,
-    build_score_features,
-    build_potm_features,
-)
-from src.data_loader import save_processed
 
 TEMPLATE = "plotly_dark"
 

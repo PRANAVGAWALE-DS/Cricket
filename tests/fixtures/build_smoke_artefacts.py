@@ -31,11 +31,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
-
 import numpy as np
 import pandas as pd
+import torch
+import xgboost as xgb
+from sklearn.model_selection import train_test_split as tts
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 
 DATA_RAW = ROOT / "data" / "raw"
 DATA_PROC = ROOT / "data" / "processed"
@@ -159,14 +162,14 @@ print(f"  deliveries.csv: {len(deliveries_df)} rows")
 # ---------------------------------------------------------------------------
 print("Building processed parquets…")
 
-from src.data_loader import load_both, save_processed
-from src.features import (
+from src.data_loader import load_both, save_processed  # noqa: E402
+from src.features import (  # noqa: E402
     build_match_features_v2,
     build_score_features,
     build_win_probability_features,
     build_potm_features,
 )
-from src.rolling_features import build_match_features_v3
+from src.rolling_features import build_match_features_v3  # noqa: E402
 
 matches, deliveries = load_both()
 save_processed(matches, "matches")
@@ -195,7 +198,7 @@ print("  All parquets written.")
 # ---------------------------------------------------------------------------
 print("Training smoke models…")
 
-from src.models import (
+from src.models import (  # noqa: E402
     train_match_winner,
     train_score_predictor,
     train_win_probability,
@@ -222,9 +225,6 @@ except Exception as exc:
         f"  potm_classifier warning during eval (single-class split on synthetic data): {exc}"
     )
     # Train without eval to still produce the artefact
-    import xgboost as xgb
-    from sklearn.model_selection import train_test_split as tts
-
     _X = pf.drop(columns=["is_potm"])
     _y = pf["is_potm"]
     _neg, _pos = (_y == 0).sum(), (_y == 1).sum()
@@ -243,7 +243,7 @@ except Exception as exc:
     print("  potm_classifier.ubj saved (fallback path)")
 
 # GRU smoke model
-from src.gru_score_model import (
+from src.gru_score_model import (  # noqa: E402
     build_over_sequences,
     build_enc_maps,
     fit_normaliser,
@@ -252,7 +252,6 @@ from src.gru_score_model import (
     save_gru,
     STEP_FEATURES,
 )
-import torch
 
 over_df = build_over_sequences(deliveries, matches)
 enc_maps = build_enc_maps(over_df)

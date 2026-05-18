@@ -19,14 +19,23 @@ import os
 import webbrowser
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-os.environ.setdefault("LOKY_MAX_CPU_COUNT", str(os.cpu_count() or 1))
-
+import joblib
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio
+from sklearn.model_selection import train_test_split
+
+os.environ.setdefault("LOKY_MAX_CPU_COUNT", str(os.cpu_count() or 1))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from src.models import (  # noqa: E402
+    train_match_winner,
+    train_score_predictor,
+    train_win_probability,
+    train_potm_classifier,
+    predict_win_curve,
+)
 
 # Write each chart to a self-contained HTML file and open via file://
 # Avoids Plotly's temporary local HTTP server (ERR_CONNECTION_REFUSED).
@@ -44,15 +53,6 @@ def show(fig: go.Figure) -> None:
     out = _CHART_DIR / f"modeling_chart_{_chart_counter:02d}.html"
     fig.write_html(str(out), include_plotlyjs="cdn")
     webbrowser.open(out.as_uri())
-
-
-from src.models import (
-    train_match_winner,
-    train_score_predictor,
-    train_win_probability,
-    train_potm_classifier,
-    predict_win_curve,
-)
 
 TEMPLATE = "plotly_dark"
 PROCESSED_DIR = Path(__file__).resolve().parents[1] / "data" / "processed"
@@ -107,9 +107,6 @@ for k, v in metrics_score.items():
         print(f"  {k}: {v}")
 
 # %%
-# Predicted vs actual
-from sklearn.model_selection import train_test_split
-
 X_s = score_feats.drop(columns=["final_score"])
 y_s = score_feats["final_score"]
 _, X_test_s, _, y_test_s = train_test_split(X_s, y_s, test_size=0.2, random_state=42)
@@ -341,9 +338,6 @@ print("\nAll models saved to models/ directory.")
 # ## 6. Inference Example — Single Match Prediction
 
 # %%
-# Example: predict win probability given a match state
-import joblib
-
 model_loaded = joblib.load(MODELS_DIR / "win_probability.pkl")
 
 # Manually constructed match state (over 15, batting team has 110/3, need 60 off 30 balls)

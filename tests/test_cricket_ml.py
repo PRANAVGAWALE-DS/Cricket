@@ -19,15 +19,15 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-
 import joblib
 import pandas as pd
 import pytest
 import torch
 import xgboost as xgb
 from fastapi.testclient import TestClient
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 # ---------------------------------------------------------------------------
 # Fixtures

@@ -27,15 +27,15 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-
 import numpy as np
 import pandas as pd
 import torch
 
-from src.data_loader import load_both
-from src.gru_score_model import (
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from src.data_loader import load_both  # noqa: E402
+from src.gru_score_model import (  # noqa: E402
     OverSequenceDataset,
     build_enc_maps,
     build_over_sequences,

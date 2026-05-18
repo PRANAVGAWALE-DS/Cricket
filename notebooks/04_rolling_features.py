@@ -31,10 +31,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-
-from src.data_loader import load_both
-from src.models import train_match_winner
-from src.rolling_features import build_match_features_v3, compute_team_rolling_form
+from src.data_loader import load_both  # noqa: E402
+from src.models import train_match_winner  # noqa: E402
+from src.rolling_features import (  # noqa: E402
+    build_match_features_v3,
+    compute_team_rolling_form,
+)
 
 logging.basicConfig(
     level=logging.INFO,

@@ -15,15 +15,9 @@
 # ## Setup
 
 # %%
+import webbrowser
 import sys
 from pathlib import Path
-
-sys.path.insert(
-    0, str(Path(__file__).resolve().parents[1])
-)  # allow `from src import ...`
-
-import webbrowser
-from pathlib import Path as _Path
 
 import pandas as pd
 import plotly.express as px
@@ -31,12 +25,16 @@ import plotly.graph_objects as go
 import plotly.io as pio
 from plotly.subplots import make_subplots
 
+sys.path.insert(
+    0, str(Path(__file__).resolve().parents[1])
+)  # allow `from src import ...`
+
 # Write each chart to a self-contained HTML file and open via file://
 # This avoids Plotly's temporary local HTTP server entirely, which was
 # causing ERR_CONNECTION_REFUSED on ~4 of 18 charts when servers raced.
 pio.renderers.default = "browser"
 
-_CHART_DIR = _Path(__file__).resolve().parent / ".charts"
+_CHART_DIR = Path(__file__).resolve().parent / ".charts"
 _CHART_DIR.mkdir(exist_ok=True)
 _chart_counter = 0
 
@@ -57,8 +55,8 @@ def show(fig: go.Figure) -> None:
     webbrowser.open(out.as_uri())
 
 
-from src.data_loader import load_both, save_processed
-from src.features import (
+from src.data_loader import load_both, save_processed  # noqa: E402
+from src.features import (  # noqa: E402
     batting_career_stats,
     batting_phase_stats,
     bowling_career_stats,
