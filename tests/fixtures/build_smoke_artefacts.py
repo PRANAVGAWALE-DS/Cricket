@@ -169,7 +169,10 @@ from src.features import (  # noqa: E402
     build_win_probability_features,
     build_potm_features,
 )
-from src.rolling_features import build_match_features_v3  # noqa: E402
+from src.rolling_features import (  # noqa: E402
+    build_match_features_v3,
+    compute_team_rolling_form,
+)
 
 matches, deliveries = load_both()
 save_processed(matches, "matches")
@@ -177,6 +180,9 @@ save_processed(deliveries, "deliveries")
 
 mf = build_match_features_v2(matches)
 save_processed(mf, "match_features")
+
+team_form = compute_team_rolling_form(deliveries, matches)
+save_processed(team_form, "team_rolling_form")
 
 mf3 = build_match_features_v3(matches, deliveries)
 save_processed(mf3, "match_features_v3")
