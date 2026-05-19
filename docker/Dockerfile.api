@@ -2,16 +2,22 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# System deps for LightGBM/XGBoost
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libgomp1 curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements_tier3.txt .
-RUN pip install --no-cache-dir -r requirements_tier3.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements_tier3.txt
 
-# Source copied in via volume mount at runtime;
-# copy here only for image-layer caching purposes.
+# PyTorch is optional — GRU endpoint returns 404 gracefully if absent.
+# Install separately after docker build if needed:
+#   docker exec <container> pip install torch==2.5.1 \
+#     --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir torch==2.5.1 \
+        --index-url https://download.pytorch.org/whl/cpu \
+    || echo "WARNING: torch install failed — GRU endpoint will return 404. Other models unaffected."
+
 COPY src/ src/
 COPY api/ api/
 

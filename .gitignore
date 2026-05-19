@@ -51,3 +51,4 @@ htmlcov/
 # ── Pytest ────────────────────────────────────────────────────────────────────
 .pytest_cache
 project_tree.txt
+.coverage

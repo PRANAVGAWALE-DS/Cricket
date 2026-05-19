@@ -2,12 +2,26 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgomp1 curl \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements_tier3.txt .
-RUN pip install --no-cache-dir -r requirements_tier3.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements_tier3.txt && \
+    pip install --no-cache-dir matplotlib==3.8.2
+
+# PyTorch optional — GRU Score Predictor tab will show "model not loaded"
+# if torch is absent. All other dashboard pages work without it.
+RUN pip install --no-cache-dir torch==2.5.1 \
+        --index-url https://download.pytorch.org/whl/cpu \
+    || echo "WARNING: torch install failed — GRU tab unavailable. Other pages unaffected."
 
 COPY streamlit_app.py .
+COPY src/ src/
 
 ENV PYTHONPATH=/app
+ENV API_BASE_URL=http://localhost:8000
 
 CMD ["streamlit", "run", "streamlit_app.py", \
      "--server.port=8501", \
