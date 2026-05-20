@@ -200,6 +200,17 @@ docker compose up --build
 </details>
 
 <details>
+<summary><code>GET /matches</code> — All match IDs available for the win-curve endpoint</summary>
+
+```json
+{
+  "match_ids": [1, 2, 3, "..."],
+  "count": 754
+}
+```
+</details>
+
+<details>
 <summary><code>POST /predict/match-winner</code> — Pre-match win probability</summary>
 
 ```json
@@ -297,6 +308,9 @@ Models saved as `.ubj` (XGBoost's binary JSON) via `model.save_model()`. Elimina
 
 **Lifespan startup (FastAPI)**
 Migrated from deprecated `@app.on_event("startup")` to `@asynccontextmanager lifespan` — required for correct TestClient behaviour in pytest.
+
+**Encoding compatibility without a stored encoder**
+Models use `pd.Series.astype("category").cat.codes` for team and venue encoding. Codes are assigned in **alphabetically sorted order** of unique values seen in training. `api/main.py` reconstructs these maps at startup from the same processed parquets — inference encoding always matches training encoding without storing a separate `LabelEncoder` artefact.
 
 **43-test CI pipeline**
 7 test classes: data loader schema, feature engineering, rolling features, model serialisation, GRU, API routes, model validation gate (AUC thresholds). Smoke artefact builder generates synthetic data so CI never needs real CSVs or models.
