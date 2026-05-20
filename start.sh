@@ -1,16 +1,15 @@
 #!/bin/bash
 # =============================================================================
 # start.sh — HF Spaces container startup
-# 1. Downloads models + parquets from HF Hub dataset repo
-#    (skipped when LOCAL_ARTEFACTS=1 for local Docker testing)
-# 2. Starts FastAPI on :8000 (background)
-# 3. Waits for API health check to pass
-# 4. Starts Streamlit on :7860 (foreground — keeps container alive)
+# Models are committed directly to the Space repo (no HF Hub download needed).
+# Set LOCAL_ARTEFACTS=0 to re-enable HF Hub download instead.
 # =============================================================================
 
 set -euo pipefail
 
-ARTEFACTS_REPO="PRANAVGAWALE-DS/cricket-ml-artefacts"
+# Models committed directly to Space repo — skip Hub download by default
+LOCAL_ARTEFACTS="${LOCAL_ARTEFACTS:-1}"
+ARTEFACTS_REPO="PG-AIML/cricket-ml-artefacts"
 MAX_WAIT=60   # seconds to wait for API health check
 
 echo "========================================"
@@ -38,7 +37,7 @@ except ImportError:
     print("ERROR: huggingface_hub not installed", file=sys.stderr)
     sys.exit(1)
 
-REPO_ID = "PRANAVGAWALE-DS/cricket-ml-artefacts"
+REPO_ID = "PG-AIML/cricket-ml-artefacts"
 
 print(f"  Downloading from {REPO_ID}...")
 local = snapshot_download(

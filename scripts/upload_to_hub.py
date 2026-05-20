@@ -6,10 +6,11 @@ to the HF Hub dataset repo that the Space downloads at startup.
 
 Run once from the project root (after training all models):
     pip install huggingface_hub
-    huggingface-cli login          # enter your HF token
+    huggingface-cli login          # enter a write-scoped HF token
+    # or set HF_TOKEN / HUGGING_FACE_HUB_TOKEN in your shell
     python scripts/upload_to_hub.py
 
-HF Hub repo created: PRANAVGAWALE-DS/cricket-ml-artefacts (private by default)
+HF Hub repo created: PG-AIML/cricket-ml-artefacts (private by default)
 The Space (start.sh) downloads from this repo at container startup.
 
 Files uploaded
@@ -41,30 +42,69 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 try:
-    from huggingface_hub import HfApi, create_repo
+    from huggingface_hub import HfApi, create_repo, get_token
+    from huggingface_hub.errors import HfHubHTTPError
 except ImportError:
     print("ERROR: huggingface_hub not installed.")
     print("Run: pip install huggingface_hub")
     sys.exit(1)
 
-REPO_ID = "PRANAVGAWALE-DS/cricket-ml-artefacts"
+REPO_ID = "PG-AIML/cricket-ml-artefacts"
 REPO_TYPE = "dataset"
 
 # Model extensions to upload
 MODEL_EXTS = {".ubj", ".pkl", ".pt", ".pth"}
 
 
+def die_auth(message: str) -> None:
+    print()
+    print("ERROR: Hugging Face authentication failed.")
+    print(message)
+    print()
+    print("Fix:")
+    print("  1. Create a Hugging Face access token with write permission:")
+    print("     https://huggingface.co/settings/tokens")
+    print("  2. Log in again from this same virtualenv/session:")
+    print("     huggingface-cli logout")
+    print("     huggingface-cli login")
+    print("  3. Make sure the token's user can create/write to the PG-AIML org.")
+    print()
+    print("Alternative for this PowerShell session:")
+    print("  $env:HF_TOKEN = \"hf_your_token_here\"")
+    print("  python scripts/upload_to_hub.py")
+    sys.exit(1)
+
+
 def main() -> None:
-    api = HfApi()
+    token = get_token()
+    if not token:
+        die_auth("No HF token was found in the login cache or environment.")
+
+    api = HfApi(token=token)
+    try:
+        user = api.whoami(token=token)
+    except HfHubHTTPError as exc:
+        die_auth(f"The configured HF token was rejected: {exc}")
+
+    username = user.get("name") or user.get("fullname") or "authenticated user"
+    print(f"Authenticated to HF Hub as: {username}")
 
     # Create repo if it doesn't exist (private by default)
     print(f"Creating/verifying HF Hub repo: {REPO_ID}")
-    create_repo(
-        repo_id=REPO_ID,
-        repo_type=REPO_TYPE,
-        private=True,  # set False to make public
-        exist_ok=True,
-    )
+    try:
+        create_repo(
+            repo_id=REPO_ID,
+            repo_type=REPO_TYPE,
+            private=True,  # set False to make public
+            exist_ok=True,
+            token=token,
+        )
+    except HfHubHTTPError as exc:
+        die_auth(
+            "Could not create or verify the repo. "
+            f"Check that your token has write permission for {REPO_ID}. "
+            f"Original error: {exc}"
+        )
     print("  Repo ready.")
     print()
 
@@ -124,12 +164,10 @@ def main() -> None:
     print()
     print("Next steps:")
     print("  1. Push code to HF Space:")
-    print(
-        "     git remote add space https://huggingface.co/spaces/PRANAVGAWALE-DS/Cricket"
-    )
+    print("     git remote add space https://huggingface.co/spaces/PG-AIML/Cricket")
     print("     git push space main")
     print("  2. Watch build logs at:")
-    print("     https://huggingface.co/spaces/PRANAVGAWALE-DS/Cricket")
+    print("     https://huggingface.co/spaces/PG-AIML/Cricket")
     print("=" * 55)
 
 
