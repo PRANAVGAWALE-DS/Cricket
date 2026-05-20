@@ -52,3 +52,4 @@ htmlcov/
 .pytest_cache
 project_tree.txt
 .coverage
+hf-space/
