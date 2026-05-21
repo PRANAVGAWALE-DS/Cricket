@@ -5,9 +5,9 @@
 **Production-grade ML pipeline for IPL analytics**  
 *5 models · 7 API endpoints · Live Streamlit dashboard · Dockerised · CI/CD*
 
-[![Live Demo](https://img.shields.io/badge/🚀_Live_Demo-HuggingFace_Spaces-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black)](https://huggingface.co/spaces/PG-AIML/Cricket)
-[![GitHub Repo](https://img.shields.io/badge/GitHub-PRANAVGAWALE--DS/Cricket-181717?style=for-the-badge&logo=github)](https://github.com/PRANAVGAWALE-DS/Cricket)
-[![CI](https://img.shields.io/github/actions/workflow/status/PRANAVGAWALE-DS/Cricket/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/PRANAVGAWALE-DS/Cricket/actions)
+[![Live Demo](https://img.shields.io/badge/🚀_Live_Demo-HuggingFace_Spaces-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black)](#links)
+[![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github)](#)
+[![CI](https://img.shields.io/github/actions/workflow/status/PRANAVGAWALE-DS/Cricket/ci.yml?branch=main&style=for-the-badge&label=CI)](actions)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](LICENSE)
 
@@ -18,7 +18,7 @@
 <img src="https://img.shields.io/badge/PyTorch_GRU-Score_Predictor-EE4C2C?style=flat-square"/>
 <img src="https://img.shields.io/badge/Tests-37_passed-22C55E?style=flat-square"/>
 
-> **Live demo →** [huggingface.co/spaces/PG-AIML/Cricket](https://huggingface.co/spaces/PG-AIML/Cricket)
+> **Live demo →** [Visit Hugging Face Space](#links)
 
 </div>
 
